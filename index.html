@@ -129,10 +129,32 @@
   .history li:first-child { border-top: 0; }
   .muted { color: var(--muted); }
   .note { color: var(--muted); font-size: .8rem; }
-  .hidden { display: none; }
+  .hidden { display: none !important; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip:disabled { opacity: .5; cursor: not-allowed; }
   .hint { color: var(--muted); font-size: .85rem; margin: 10px 0 0; }
+  .btn-secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .btn-wide { grid-column: 1 / -1; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .tile { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .tile .val { font-weight: 700; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+  .milestone {
+    background: var(--accent-soft); border-radius: 12px; padding: 12px 14px; margin: 12px 0 0;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px; font-weight: 600;
+  }
+  .history li { flex-wrap: wrap; align-items: center; }
+  .entry-main { display: flex; justify-content: space-between; gap: 12px; flex: 1 1 100%; }
+  .entry-actions { display: flex; gap: 6px; margin-top: 6px; }
+  .mini { font-size: .8rem; padding: 3px 10px; }
+  .edit-form { flex: 1 1 100%; display: grid; gap: 8px; margin-top: 8px; }
+  .edit-form input {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit;
+  }
+  input[type="number"] {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--bg); color: var(--text); font: inherit;
+  }
 </style>
 </head>
 <body>
@@ -157,9 +179,14 @@
       <button class="chip" data-hours="40">40 Std.</button>
       <button class="chip" data-hours="72">72 Std.</button>
     </div>
-    <div class="buttons">
+    <div class="buttons" id="mainButtons">
       <button class="btn btn-start" id="startBtn">Starten</button>
       <button class="btn btn-stop" id="stopBtn" disabled>Beenden</button>
+      <button class="btn btn-secondary btn-wide hidden" id="editActiveBtn">Zeiten bearbeiten</button>
+    </div>
+    <div class="buttons hidden" id="editButtons">
+      <button class="btn btn-start" id="saveActiveBtn">Speichern</button>
+      <button class="btn btn-secondary" id="cancelActiveBtn">Abbrechen</button>
     </div>
     <p class="error" id="error" role="alert"></p>
   </section>
@@ -212,13 +239,43 @@
     <p class="hint" id="installHint"></p>
   </section>
 
-  <section class="card" id="historyCard">
-    <h2>Verlauf</h2>
+  <section class="card" id="statsCard">
+    <h2>Statistik</h2>
     <div class="stat">
       <div class="stat-label">Fastenstunden insgesamt</div>
       <div class="big" id="totalHours">0 Std.</div>
+      <div class="stat-label" id="nextMilestone"></div>
     </div>
+    <div class="milestone hidden" id="milestoneBanner">
+      <span id="milestoneText"></span>
+      <button class="chip mini" id="milestoneClose" aria-label="Schließen">OK</button>
+    </div>
+    <div class="tiles">
+      <div class="tile"><div class="stat-label">Fastenzeiten</div><div class="val" id="statCount">0</div></div>
+      <div class="tile"><div class="stat-label">Ziel erreicht</div><div class="val" id="statRate">0 %</div></div>
+      <div class="tile"><div class="stat-label">Längstes Fasten</div><div class="val" id="statLongest">0 Std.</div></div>
+      <div class="tile"><div class="stat-label">Durchschnitt</div><div class="val" id="statAvg">0 Std.</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="historyCard">
+    <h2>Verlauf</h2>
     <ul class="history" id="history"></ul>
+  </section>
+
+  <section class="card" id="dataCard">
+    <h2>Daten sichern</h2>
+    <p class="hint" style="margin-top:0">Deine Daten liegen nur auf diesem Gerät. Sichere sie ab und zu, damit nichts verloren geht, etwa beim Löschen der Browserdaten oder bei einem neuen Handy.</p>
+    <div class="actions" style="margin-top:12px">
+      <button class="chip" id="exportBtn">Sichern</button>
+      <button class="chip" id="importBtn">Wiederherstellen</button>
+      <input type="file" id="importFile" accept="application/json,.json" class="hidden">
+    </div>
+    <p class="hint" id="dataMsg" role="status"></p>
+    <div style="margin-top:16px">
+      <label for="baseInput">Fastenstunden vor dieser App</label>
+      <input type="number" id="baseInput" min="0" step="1" inputmode="numeric">
+    </div>
   </section>
 
   <p class="note">
@@ -304,15 +361,36 @@
   ringFg.style.strokeDasharray = RING_LEN;
 
   let state = load();
+  let editingActive = false;
+  let editingEntry = null;
   let quoteIndex = Math.floor(Math.random() * QUOTES.length);
   let lastQuoteSwitch = Date.now();
 
+  const MILESTONE_STEP = 100; // Meilenstein alle 100 Stunden
+
+  function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+  // Bringt gespeicherte oder importierte Daten in die aktuelle Form
+  function normalize(data) {
+    const st = Object.assign({ active: null, history: [], notify: false }, data);
+    if (typeof st.baseMs !== "number") st.baseMs = START_TOTAL_HOURS * HOUR;
+    delete st.totalMs; // alte Version: Summe wird jetzt aus Startwert und Verlauf berechnet
+    st.history = (st.history || [])
+      .filter((h) => h && typeof h.start === "number" && typeof h.stop === "number" && h.stop > h.start)
+      .map((h) => ({ id: h.id || newId(), start: h.start, stop: h.stop, target: Number(h.target) || 0 }));
+    sortHistory(st.history);
+    return st;
+  }
+
+  function sortHistory(list) { list.sort((a, b) => b.start - a.start); }
+
   function load() {
+    let data = {};
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return Object.assign({ active: null, history: [], totalMs: START_TOTAL_HOURS * HOUR }, JSON.parse(raw));
+      if (raw) data = JSON.parse(raw);
     } catch (e) {}
-    return { active: null, history: [], totalMs: START_TOTAL_HOURS * HOUR };
+    return normalize(data);
   }
 
   function save() {
@@ -381,9 +459,8 @@
     const now = Date.now();
     const { start, end } = state.active;
     if (now > start) {
-      state.history.unshift({ start, stop: now, target: end - start });
-      state.totalMs += now - start;
-      state.history = state.history.slice(0, 20);
+      state.history.unshift({ id: newId(), start, stop: now, target: end - start });
+      sortHistory(state.history);
     }
     state.active = null;
     save();
@@ -413,11 +490,56 @@
     });
   }
 
-  // Gesamtstunden inklusive des laufenden Fastens
-  function renderTotal(now) {
+  // Gesamtstunden: Startwert + alle beendeten Fastenzeiten + laufendes Fasten
+  function totalMs(now) {
+    const done = state.history.reduce((sum, h) => sum + (h.stop - h.start), 0);
     const running = state.active && now > state.active.start ? now - state.active.start : 0;
-    const hours = Math.floor((state.totalMs + running) / HOUR);
+    return state.baseMs + done + running;
+  }
+
+  function milestoneOf(ms) { return Math.floor(ms / HOUR / MILESTONE_STEP) * MILESTONE_STEP; }
+
+  // Ohne Feier auf den aktuellen Stand setzen (nach Bearbeiten, Import, erstem Start)
+  function syncMilestone() {
+    state.lastMilestone = milestoneOf(totalMs(Date.now()));
+  }
+
+  function renderTotal(now) {
+    const ms = totalMs(now);
+    const hours = Math.floor(ms / HOUR);
     $("totalHours").textContent = hours.toLocaleString("de-DE") + " Std.";
+    const reached = milestoneOf(ms);
+    if (reached > state.lastMilestone) {
+      state.lastMilestone = reached;
+      state.milestoneBanner = reached;
+      save();
+      notify("Meilenstein erreicht! 🎉", reached.toLocaleString("de-DE") + " Fastenstunden insgesamt. Großartig!");
+    }
+    const next = reached + MILESTONE_STEP;
+    $("nextMilestone").textContent = "Nächster Meilenstein: " + next.toLocaleString("de-DE") +
+      " Std. (noch " + fmtHours(next * HOUR - ms) + ")";
+    const banner = $("milestoneBanner");
+    banner.classList.toggle("hidden", !state.milestoneBanner);
+    if (state.milestoneBanner) {
+      $("milestoneText").textContent = "🎉 Meilenstein erreicht: " + state.milestoneBanner.toLocaleString("de-DE") + " Fastenstunden!";
+    }
+  }
+
+  $("milestoneClose").addEventListener("click", () => {
+    state.milestoneBanner = null;
+    save();
+    renderTotal(Date.now());
+  });
+
+  function renderStats() {
+    const list = state.history;
+    const durs = list.map((h) => h.stop - h.start);
+    const n = list.length;
+    const reached = list.filter((h) => h.target > 0 && h.stop - h.start >= h.target).length;
+    $("statCount").textContent = n.toLocaleString("de-DE");
+    $("statRate").textContent = n ? Math.round((reached / n) * 100) + " %" : "0 %";
+    $("statLongest").textContent = fmtHours(n ? Math.max(...durs) : 0);
+    $("statAvg").textContent = fmtHours(n ? durs.reduce((a, b) => a + b, 0) / n : 0);
   }
 
   function renderHistory() {
@@ -429,28 +551,165 @@
     }
     state.history.forEach((h) => {
       const dur = h.stop - h.start;
-      const reached = dur >= h.target;
+      const reached = h.target > 0 && dur >= h.target;
       const li = document.createElement("li");
-      li.innerHTML = `<span>${fmtDate(h.start)}</span>
-        <span><strong>${fmtHours(dur)}</strong> <span class="muted">von ${fmtHours(h.target)}</span> ${reached ? "✓" : ""}</span>`;
+      const target = h.target > 0 ? ` <span class="muted">von ${fmtHours(h.target)}</span>` : "";
+      li.innerHTML = `<div class="entry-main"><span>${fmtDate(h.start)}</span>
+        <span><strong>${fmtHours(dur)}</strong>${target} ${reached ? "✓" : ""}</span></div>`;
+      if (editingEntry === h.id) {
+        const form = document.createElement("div");
+        form.className = "edit-form";
+        form.innerHTML = `
+          <label>Start<input type="datetime-local" data-f="start" value="${toLocalInput(h.start)}"></label>
+          <label>Ende<input type="datetime-local" data-f="stop" value="${toLocalInput(h.stop)}"></label>
+          <label>Ziel in Stunden<input type="number" min="0" step="1" data-f="target" value="${Math.round(h.target / HOUR)}"></label>
+          <p class="error" data-f="err"></p>
+          <div class="entry-actions">
+            <button class="chip mini" data-a="save">Speichern</button>
+            <button class="chip mini" data-a="cancel">Abbrechen</button>
+          </div>`;
+        form.querySelector('[data-a="save"]').addEventListener("click", () => {
+          const start = fromLocalInput(form.querySelector('[data-f="start"]').value);
+          const stop = fromLocalInput(form.querySelector('[data-f="stop"]').value);
+          const targetH = Number(form.querySelector('[data-f="target"]').value);
+          if (isNaN(start) || isNaN(stop) || stop <= start) {
+            form.querySelector('[data-f="err"]').textContent = "Das Ende muss nach dem Start liegen.";
+            return;
+          }
+          Object.assign(h, { start, stop, target: Math.max(0, targetH || 0) * HOUR });
+          sortHistory(state.history);
+          editingEntry = null;
+          syncMilestone();
+          save();
+          render();
+        });
+        form.querySelector('[data-a="cancel"]').addEventListener("click", () => { editingEntry = null; renderHistory(); });
+        li.appendChild(form);
+      } else {
+        const actions = document.createElement("div");
+        actions.className = "entry-actions";
+        actions.innerHTML = '<button class="chip mini" data-a="edit">Bearbeiten</button><button class="chip mini" data-a="del">Löschen</button>';
+        actions.querySelector('[data-a="edit"]').addEventListener("click", () => { editingEntry = h.id; renderHistory(); });
+        actions.querySelector('[data-a="del"]').addEventListener("click", () => {
+          if (!confirm(`Fasten vom ${fmtDate(h.start)} (${fmtHours(dur)}) löschen? Die Stunden werden von der Gesamtsumme abgezogen.`)) return;
+          state.history = state.history.filter((x) => x.id !== h.id);
+          syncMilestone();
+          save();
+          render();
+        });
+        li.appendChild(actions);
+      }
       list.appendChild(li);
     });
   }
 
+  // Laufendes Fasten bearbeiten
+  $("editActiveBtn").addEventListener("click", () => { editingActive = true; $("error").textContent = ""; render(); });
+  $("cancelActiveBtn").addEventListener("click", () => { editingActive = false; $("error").textContent = ""; render(); });
+  $("saveActiveBtn").addEventListener("click", () => {
+    const start = fromLocalInput(startInput.value);
+    const end = fromLocalInput(endInput.value);
+    if (isNaN(start) || isNaN(end)) { $("error").textContent = "Bitte Start und Ende eingeben."; return; }
+    if (end <= start) { $("error").textContent = "Die Endzeit muss nach der Startzeit liegen."; return; }
+    const now = Date.now();
+    // Bereits vergangene Phasen und Ziel nicht erneut melden
+    state.active = { start, end, notifiedPhase: phaseIndexAt(now, start), goalNotified: now >= end };
+    editingActive = false;
+    $("error").textContent = "";
+    syncMilestone();
+    save();
+    render();
+  });
+
+  // Startwert der Gesamtstunden
+  const baseInput = $("baseInput");
+  baseInput.addEventListener("change", () => {
+    const h = Number(baseInput.value);
+    if (!isFinite(h) || h < 0) { baseInput.value = Math.round(state.baseMs / HOUR); return; }
+    state.baseMs = Math.round(h) * HOUR;
+    syncMilestone();
+    save();
+    render();
+  });
+
+  // Sichern und Wiederherstellen
+  function dataMsg(text) { $("dataMsg").textContent = text; }
+
+  $("exportBtn").addEventListener("click", async () => {
+    const payload = Object.assign({ app: "fastentracker", version: 2, exportedAt: new Date().toISOString() }, state);
+    const json = JSON.stringify(payload, null, 2);
+    const name = "fastentracker-sicherung-" + toLocalInput(Date.now()).slice(0, 10) + ".json";
+    const file = new File([json], name, { type: "application/json" });
+    // Auf dem iPhone klappt Teilen zuverlässiger als ein Download
+    if (isIos() && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "Fastentracker Sicherung" });
+        dataMsg("Sicherung geteilt. Lege die Datei zum Beispiel in „Dateien“ oder einer Cloud ab.");
+      } catch (e) {
+        if (e.name !== "AbortError") dataMsg("Teilen hat nicht geklappt.");
+      }
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    dataMsg("Sicherung gespeichert: " + name);
+  });
+
+  $("importBtn").addEventListener("click", () => $("importFile").click());
+  $("importFile").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    let data;
+    try { data = JSON.parse(await f.text()); } catch (err) { dataMsg("Die Datei konnte nicht gelesen werden."); return; }
+    if (!data || data.app !== "fastentracker" || !Array.isArray(data.history)) {
+      dataMsg("Das ist keine Sicherung des Fastentrackers.");
+      return;
+    }
+    if (!confirm(`Sicherung mit ${data.history.length} Fastenzeiten wiederherstellen? Die aktuellen Daten auf diesem Gerät werden ersetzt.`)) return;
+    const keepNotify = state.notify;
+    delete data.app; delete data.version; delete data.exportedAt;
+    state = normalize(data);
+    state.notify = keepNotify;
+    if (state.active && !(typeof state.active.start === "number" && typeof state.active.end === "number")) state.active = null;
+    editingActive = false;
+    editingEntry = null;
+    syncMilestone();
+    state.milestoneBanner = null;
+    save();
+    if (!state.active) setDefaults();
+    render();
+    dataMsg("Sicherung wiederhergestellt.");
+  });
+
+
   function render() {
     const active = state.active;
-    startInput.disabled = !!active;
-    endInput.disabled = !!active;
-    document.querySelectorAll(".chip[data-hours]").forEach((b) => (b.disabled = !!active));
+    if (!active) editingActive = false;
+    const locked = !!active && !editingActive;
+    startInput.disabled = locked;
+    endInput.disabled = locked;
+    document.querySelectorAll(".chip[data-hours]").forEach((b) => (b.disabled = locked));
     startBtn.disabled = !!active;
     stopBtn.disabled = !active;
-    if (active) {
+    $("editActiveBtn").classList.toggle("hidden", !active);
+    $("mainButtons").classList.toggle("hidden", editingActive);
+    $("editButtons").classList.toggle("hidden", !editingActive);
+    if (active && !editingActive) {
       startInput.value = toLocalInput(active.start);
       endInput.value = toLocalInput(active.end);
     }
     $("status").classList.toggle("hidden", !active);
     $("phaseCard").classList.toggle("hidden", !active);
+    if (document.activeElement !== baseInput) baseInput.value = Math.round(state.baseMs / HOUR);
     renderHistory();
+    renderStats();
     tick();
   }
 
@@ -611,6 +870,7 @@
     $("ringText").textContent = Math.floor(fraction * 100) + " %";
   }
 
+  if (typeof state.lastMilestone !== "number") { syncMilestone(); save(); }
   if (!state.active) setDefaults();
   $("quote").textContent = QUOTES[quoteIndex];
   render();

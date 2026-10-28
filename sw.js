@@ -1,5 +1,5 @@
 // Service Worker: macht die App offline nutzbar und öffnet sie beim Tippen auf eine Benachrichtigung.
-const CACHE = "fastentracker-v4";
+const CACHE = "fastentracker-v5";
 const FILES = [
   "./",
   "./index.html",

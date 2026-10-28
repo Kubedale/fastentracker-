@@ -9,7 +9,11 @@ Ein einfacher Fastentracker als einzelne HTML-Datei, ohne Installation.
 * Start (letzte Mahlzeit) und Ende (Ziel) eingeben oder eine Schnellauswahl wählen (24, 40 oder 72 Std.)
 * **Starten** beginnt das Fasten, **Beenden** stoppt es und speichert es im Verlauf
 * Die App zeigt laufend die gefastete Zeit, die Restzeit, den Fortschritt und die aktuelle Stoffwechselphase
-* Zählt die Fastenstunden insgesamt (Startwert 2008 Std., das laufende Fasten wird live mitgezählt)
+* Zählt die Fastenstunden insgesamt (Startwert 2008 Std., in der App änderbar, das laufende Fasten wird live mitgezählt)
+* Meilensteine alle 100 Stunden mit Benachrichtigung
+* Statistik: Anzahl, Zielquote, längstes Fasten, Durchschnitt
+* Laufendes Fasten und Einträge im Verlauf bearbeiten oder löschen
+* Daten sichern und wiederherstellen (JSON-Datei)
 * Jede Minute erscheint ein neuer Motivationsspruch, per Button auch sofort
 
 * Optional Benachrichtigungen bei jedem Phasenwechsel und beim Erreichen des Ziels
