@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fastentracker</title>
+<style>
+  :root {
+    --bg: #f6f4ef;
+    --card: #ffffff;
+    --text: #1f2421;
+    --muted: #66706a;
+    --line: #e2ded5;
+    --accent: #2f7d5b;
+    --accent-soft: #dcefe5;
+    --warn: #b4532a;
+    --ring-bg: #e8e4da;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151816;
+      --card: #1f2421;
+      --text: #ecefe9;
+      --muted: #9aa49d;
+      --line: #313833;
+      --accent: #5fbf8f;
+      --accent-soft: #24372d;
+      --warn: #e38a5f;
+      --ring-bg: #2c332e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: .9rem; color: var(--muted); margin-bottom: 4px; }
+  input[type="datetime-local"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 420px) { .row { grid-template-columns: 1fr; } }
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
+  .chip {
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--text);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font: inherit;
+    font-size: .9rem;
+    cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .btn {
+    border: 0;
+    border-radius: 12px;
+    padding: 14px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-start { background: var(--accent); color: #fff; }
+  .btn-stop { background: var(--warn); color: #fff; }
+  .error { color: var(--warn); font-size: .9rem; min-height: 1.4em; margin: 8px 0 0; }
+
+  .timer { display: flex; align-items: center; gap: 20px; }
+  .ring { width: 140px; height: 140px; flex: none; }
+  .ring circle { fill: none; stroke-width: 12; }
+  .ring .bg { stroke: var(--ring-bg); }
+  .ring .fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .5s; }
+  .ring text { fill: var(--text); font-size: 22px; font-weight: 700; }
+  .stats { flex: 1; min-width: 0; }
+  .big { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat-label { color: var(--muted); font-size: .85rem; }
+  .stat { margin-bottom: 10px; }
+  @media (max-width: 420px) { .timer { flex-direction: column; align-items: stretch; } .ring { margin: 0 auto; } }
+
+  .phase-name { font-weight: 700; font-size: 1.1rem; margin: 0 0 6px; }
+  .phase-time { color: var(--muted); font-size: .85rem; margin: 0 0 10px; }
+  .phase-text { margin: 0 0 10px; }
+  .phase-source { color: var(--muted); font-size: .8rem; margin: 0; }
+  .timeline { display: flex; gap: 4px; margin: 14px 0 0; }
+  .timeline span { flex: 1; height: 6px; border-radius: 3px; background: var(--ring-bg); }
+  .timeline span.done { background: var(--accent); }
+  .timeline span.now { background: var(--accent); opacity: .5; }
+
+  .quote {
+    background: var(--accent-soft);
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 1.05rem;
+    margin: 0 0 12px;
+  }
+  .goal { color: var(--accent); font-weight: 700; margin: 0 0 12px; }
+  .history { list-style: none; padding: 0; margin: 0; }
+  .history li {
+    display: flex; justify-content: space-between; gap: 12px;
+    padding: 8px 0; border-top: 1px solid var(--line); font-size: .9rem;
+  }
+  .history li:first-child { border-top: 0; }
+  .muted { color: var(--muted); }
+  .note { color: var(--muted); font-size: .8rem; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Fastentracker</h1>
+  <p class="sub">Start und Ende eingeben, starten und verfolgen, was im Körper passiert.</p>
+
+  <section class="card" id="setup">
+    <h2>Dein Fasten</h2>
+    <div class="row">
+      <div>
+        <label for="startInput">Start (letzte Mahlzeit)</label>
+        <input type="datetime-local" id="startInput">
+      </div>
+      <div>
+        <label for="endInput">Ende (Ziel)</label>
+        <input type="datetime-local" id="endInput">
+      </div>
+    </div>
+    <div class="presets" aria-label="Schnellauswahl Dauer">
+      <button class="chip" data-hours="12">12 Std.</button>
+      <button class="chip" data-hours="14">14 Std.</button>
+      <button class="chip" data-hours="16">16:8</button>
+      <button class="chip" data-hours="18">18:6</button>
+      <button class="chip" data-hours="24">24 Std.</button>
+    </div>
+    <div class="buttons">
+      <button class="btn btn-start" id="startBtn">Starten</button>
+      <button class="btn btn-stop" id="stopBtn" disabled>Beenden</button>
+    </div>
+    <p class="error" id="error" role="alert"></p>
+  </section>
+
+  <section class="card hidden" id="status">
+    <div class="timer">
+      <svg class="ring" viewBox="0 0 140 140" aria-hidden="true">
+        <circle class="bg" cx="70" cy="70" r="58"></circle>
+        <circle class="fg" id="ringFg" cx="70" cy="70" r="58"
+                transform="rotate(-90 70 70)"></circle>
+        <text id="ringText" x="70" y="78" text-anchor="middle">0 %</text>
+      </svg>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-label" id="elapsedLabel">Gefastet</div>
+          <div class="big" id="elapsed">00:00:00</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label" id="remainingLabel">Noch bis zum Ziel</div>
+          <div class="big" id="remaining" style="font-size:1.4rem">00:00:00</div>
+        </div>
+        <div class="stat-label" id="endInfo"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card hidden" id="phaseCard">
+    <h2>Was gerade im Körper passiert</h2>
+    <p class="phase-name" id="phaseName"></p>
+    <p class="phase-time" id="phaseTime"></p>
+    <p class="phase-text" id="phaseText"></p>
+    <p class="phase-source" id="phaseSource"></p>
+    <div class="timeline" id="timeline"></div>
+  </section>
+
+  <section class="card">
+    <h2>Motivation</h2>
+    <p class="goal hidden" id="goal">Ziel erreicht! Du hast es geschafft.</p>
+    <p class="quote" id="quote"></p>
+    <button class="chip" id="quoteBtn">Neuer Spruch</button>
+  </section>
+
+  <section class="card" id="historyCard">
+    <h2>Verlauf</h2>
+    <ul class="history" id="history"></ul>
+  </section>
+
+  <p class="note">
+    Hinweis: Die Zeitangaben zu den Phasen sind Durchschnittswerte aus der Fachliteratur.
+    Sie hängen stark von der letzten Mahlzeit, Bewegung und dem Stoffwechsel ab und
+    können individuell deutlich abweichen. Keine medizinische Beratung. Bei Vorerkrankungen,
+    Schwangerschaft, Diabetes oder Fasten über 24 Stunden bitte ärztlich abklären.
+  </p>
+</main>
+
+<script>
+(() => {
+  const STORAGE_KEY = "fastentracker.v1";
+  const HOUR = 3600 * 1000;
+
+  // Phasen nach Stunden seit der letzten Mahlzeit. Zeitfenster sind Richtwerte.
+  const PHASES = [
+    {
+      from: 0, to: 4,
+      name: "Verdauung (Resorptionsphase)",
+      text: "Dein Körper nimmt die Nährstoffe der letzten Mahlzeit auf. Blutzucker und Insulin steigen an und fallen danach wieder ab. Energie kommt direkt aus der Nahrung, Überschüsse werden als Glykogen und Fett gespeichert.",
+      source: "Quelle: Cahill GF, Fuel metabolism in starvation, Annu Rev Nutr 2006."
+    },
+    {
+      from: 4, to: 12,
+      name: "Nachresorptive Phase",
+      text: "Der Insulinspiegel sinkt. Die Leber hält den Blutzucker stabil, indem sie gespeichertes Glykogen abbaut. Der Anteil der Fettverbrennung nimmt langsam zu.",
+      source: "Quelle: Cahill GF, Annu Rev Nutr 2006; Longo VD und Mattson MP, Cell Metab 2014."
+    },
+    {
+      from: 12, to: 18,
+      name: "Stoffwechselwechsel beginnt",
+      text: "Die Glykogenspeicher der Leber werden kleiner. Der Körper setzt vermehrt Fettsäuren aus dem Fettgewebe frei und die Leber beginnt, Ketonkörper zu bilden. Dieser sogenannte metabolische Wechsel setzt laut Literatur etwa 12 bis 36 Stunden nach der letzten Mahlzeit ein.",
+      source: "Quelle: Anton SD et al., Flipping the Metabolic Switch, Obesity 2018."
+    },
+    {
+      from: 18, to: 24,
+      name: "Fettverbrennung und Ketonkörper",
+      text: "Fett ist jetzt eine wichtige Energiequelle, der Ketonspiegel im Blut steigt weiter. Die Neubildung von Glukose (Glukoneogenese) gewinnt an Bedeutung. Autophagie (zelluläres Recycling) wird oft in diesem Zusammenhang genannt; ab wann sie beim Menschen messbar zunimmt, ist nicht gesichert, die Belege stammen überwiegend aus Tierstudien.",
+      source: "Quelle: de Cabo R und Mattson MP, NEJM 2019; Anton SD et al., Obesity 2018."
+    },
+    {
+      from: 24, to: 48,
+      name: "Glykogen weitgehend aufgebraucht",
+      text: "Nach etwa einem Tag sind die Glykogenspeicher der Leber größtenteils geleert. Glukose wird nun überwiegend durch Glukoneogenese bereitgestellt, Ketonkörper steigen deutlich. Die Ausschüttung von Wachstumshormon nimmt beim Fasten zu.",
+      source: "Quelle: Cahill GF, Annu Rev Nutr 2006; Ho KY et al., J Clin Invest 1988."
+    },
+    {
+      from: 48, to: Infinity,
+      name: "Ausgeprägte Ketose",
+      text: "Ketonkörper sind jetzt eine zentrale Energiequelle, auch für das Gehirn, das dadurch weniger Glukose benötigt. Fasten dieser Länge sollte ärztlich begleitet werden.",
+      source: "Quelle: Cahill GF, Annu Rev Nutr 2006."
+    }
+  ];
+
+  const QUOTES = [
+    "Jede Stunde zählt. Du bist schon weiter als vorhin.",
+    "Hunger kommt in Wellen und geht auch wieder. Ein Glas Wasser hilft.",
+    "Disziplin ist, sich daran zu erinnern, was man wirklich will.",
+    "Du musst nicht perfekt sein, nur dranbleiben.",
+    "Kleine Schritte jeden Tag ergeben große Veränderungen.",
+    "Dein Körper arbeitet gerade für dich. Gib ihm die Zeit.",
+    "Der schwerste Teil ist oft der Anfang, und den hast du hinter dir.",
+    "Stolz hält länger als jeder Snack.",
+    "Du hast schon schwierigere Dinge geschafft als das hier.",
+    "Konzentrier dich auf heute. Morgen kümmert sich um sich selbst.",
+    "Ungeduld ist normal. Aufgeben ist eine Entscheidung, die du nicht treffen musst.",
+    "Ein Tee, ein Spaziergang, und die Lust ist oft schon vorbei.",
+    "Du machst das für dich, nicht für irgendwen sonst.",
+    "Fortschritt schlägt Perfektion.",
+    "Gleich hast du wieder ein Stück geschafft. Weiter so!"
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  const startInput = $("startInput");
+  const endInput = $("endInput");
+  const startBtn = $("startBtn");
+  const stopBtn = $("stopBtn");
+  const ringFg = $("ringFg");
+  const RING_LEN = 2 * Math.PI * 58;
+  ringFg.style.strokeDasharray = RING_LEN;
+
+  let state = load();
+  let quoteIndex = Math.floor(Math.random() * QUOTES.length);
+  let lastQuoteSwitch = Date.now();
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return Object.assign({ active: null, history: [] }, JSON.parse(raw));
+    } catch (e) {}
+    return { active: null, history: [] };
+  }
+
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  // Datum <-> Wert für datetime-local in lokaler Zeit
+  function toLocalInput(ms) {
+    const d = new Date(ms);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  function fromLocalInput(value) {
+    if (!value) return NaN;
+    return new Date(value).getTime();
+  }
+
+  function fmtDuration(ms) {
+    ms = Math.max(0, ms);
+    const total = Math.floor(ms / 1000);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  }
+  function fmtHours(ms) {
+    const h = ms / HOUR;
+    return h.toLocaleString("de-DE", { maximumFractionDigits: 1 }) + " Std.";
+  }
+  function fmtDate(ms) {
+    return new Date(ms).toLocaleString("de-DE", {
+      weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
+    });
+  }
+
+  function setDefaults() {
+    const now = Date.now();
+    startInput.value = toLocalInput(now);
+    endInput.value = toLocalInput(now + 16 * HOUR);
+  }
+
+  document.querySelectorAll(".chip[data-hours]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      let start = fromLocalInput(startInput.value);
+      if (isNaN(start)) { start = Date.now(); startInput.value = toLocalInput(start); }
+      endInput.value = toLocalInput(start + Number(btn.dataset.hours) * HOUR);
+      $("error").textContent = "";
+    });
+  });
+
+  startBtn.addEventListener("click", () => {
+    let start = fromLocalInput(startInput.value);
+    if (isNaN(start)) start = Date.now();
+    const end = fromLocalInput(endInput.value);
+    if (isNaN(end)) { $("error").textContent = "Bitte eine Endzeit eingeben."; return; }
+    if (end <= start) { $("error").textContent = "Die Endzeit muss nach der Startzeit liegen."; return; }
+    $("error").textContent = "";
+    state.active = { start, end };
+    save();
+    render();
+  });
+
+  stopBtn.addEventListener("click", () => {
+    if (!state.active) return;
+    const now = Date.now();
+    const { start, end } = state.active;
+    if (now > start) {
+      state.history.unshift({ start, stop: now, target: end - start });
+      state.history = state.history.slice(0, 20);
+    }
+    state.active = null;
+    save();
+    setDefaults();
+    render();
+  });
+
+  $("quoteBtn").addEventListener("click", nextQuote);
+
+  function nextQuote() {
+    let next;
+    do { next = Math.floor(Math.random() * QUOTES.length); } while (QUOTES.length > 1 && next === quoteIndex);
+    quoteIndex = next;
+    lastQuoteSwitch = Date.now();
+    $("quote").textContent = QUOTES[quoteIndex];
+  }
+
+  function renderTimeline(currentIdx) {
+    const tl = $("timeline");
+    tl.innerHTML = "";
+    PHASES.forEach((p, i) => {
+      const s = document.createElement("span");
+      if (i < currentIdx) s.className = "done";
+      else if (i === currentIdx) s.className = "now";
+      s.title = p.name;
+      tl.appendChild(s);
+    });
+  }
+
+  function renderHistory() {
+    const list = $("history");
+    list.innerHTML = "";
+    if (!state.history.length) {
+      list.innerHTML = '<li class="muted">Noch keine abgeschlossenen Fastenzeiten.</li>';
+      return;
+    }
+    state.history.forEach((h) => {
+      const dur = h.stop - h.start;
+      const reached = dur >= h.target;
+      const li = document.createElement("li");
+      li.innerHTML = `<span>${fmtDate(h.start)}</span>
+        <span><strong>${fmtHours(dur)}</strong> <span class="muted">von ${fmtHours(h.target)}</span> ${reached ? "✓" : ""}</span>`;
+      list.appendChild(li);
+    });
+  }
+
+  function render() {
+    const active = state.active;
+    startInput.disabled = !!active;
+    endInput.disabled = !!active;
+    document.querySelectorAll(".chip[data-hours]").forEach((b) => (b.disabled = !!active));
+    startBtn.disabled = !!active;
+    stopBtn.disabled = !active;
+    if (active) {
+      startInput.value = toLocalInput(active.start);
+      endInput.value = toLocalInput(active.end);
+    }
+    $("status").classList.toggle("hidden", !active);
+    $("phaseCard").classList.toggle("hidden", !active);
+    renderHistory();
+    tick();
+  }
+
+  function tick() {
+    const active = state.active;
+    const now = Date.now();
+    // Alle 60 Sekunden ein neuer Spruch
+    if (now - lastQuoteSwitch > 60 * 1000) nextQuote();
+    if (!active) { $("goal").classList.add("hidden"); return; }
+    const { start, end } = active;
+    const total = end - start;
+    const elapsed = now - start;
+
+    if (elapsed < 0) {
+      // Start liegt in der Zukunft
+      $("elapsedLabel").textContent = "Fasten beginnt in";
+      $("elapsed").textContent = fmtDuration(-elapsed);
+      $("remainingLabel").textContent = "Geplante Dauer";
+      $("remaining").textContent = fmtDuration(total);
+      setRing(0);
+    } else {
+      $("elapsedLabel").textContent = "Gefastet";
+      $("elapsed").textContent = fmtDuration(elapsed);
+      if (now < end) {
+        $("remainingLabel").textContent = "Noch bis zum Ziel";
+        $("remaining").textContent = fmtDuration(end - now);
+      } else {
+        $("remainingLabel").textContent = "Über dem Ziel";
+        $("remaining").textContent = "+" + fmtDuration(now - end);
+      }
+      setRing(Math.min(1, elapsed / total));
+    }
+    $("endInfo").textContent = "Ziel: " + fmtDate(end);
+    $("goal").classList.toggle("hidden", now < end);
+
+    const hours = Math.max(0, elapsed) / HOUR;
+    const idx = PHASES.findIndex((p) => hours >= p.from && hours < p.to);
+    const phase = PHASES[idx];
+    $("phaseName").textContent = elapsed < 0 ? "Noch nicht gestartet" : phase.name;
+    $("phaseTime").textContent = elapsed < 0
+      ? ""
+      : (phase.to === Infinity ? `ab ca. ${phase.from} Std.` : `ca. ${phase.from} bis ${phase.to} Std. nach der letzten Mahlzeit`);
+    $("phaseText").textContent = elapsed < 0 ? "Sobald dein Fasten beginnt, siehst du hier die aktuelle Phase." : phase.text;
+    $("phaseSource").textContent = elapsed < 0 ? "" : phase.source;
+    renderTimeline(elapsed < 0 ? -1 : idx);
+  }
+
+  function setRing(fraction) {
+    ringFg.style.strokeDashoffset = RING_LEN * (1 - fraction);
+    $("ringText").textContent = Math.floor(fraction * 100) + " %";
+  }
+
+  if (!state.active) setDefaults();
+  $("quote").textContent = QUOTES[quoteIndex];
+  render();
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>
