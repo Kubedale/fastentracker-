@@ -153,10 +153,6 @@
       </div>
     </div>
     <div class="presets" aria-label="Schnellauswahl Dauer">
-      <button class="chip" data-hours="12">12 Std.</button>
-      <button class="chip" data-hours="14">14 Std.</button>
-      <button class="chip" data-hours="16">16:8</button>
-      <button class="chip" data-hours="18">18:6</button>
       <button class="chip" data-hours="24">24 Std.</button>
       <button class="chip" data-hours="40">40 Std.</button>
       <button class="chip" data-hours="72">72 Std.</button>
@@ -218,6 +214,10 @@
 
   <section class="card" id="historyCard">
     <h2>Verlauf</h2>
+    <div class="stat">
+      <div class="stat-label">Fastenstunden insgesamt</div>
+      <div class="big" id="totalHours">0 Std.</div>
+    </div>
     <ul class="history" id="history"></ul>
   </section>
 
@@ -233,6 +233,8 @@
 (() => {
   const STORAGE_KEY = "fastentracker.v1";
   const HOUR = 3600 * 1000;
+  // Bisherige Fastenstunden vor Beginn der Aufzeichnung in dieser App
+  const START_TOTAL_HOURS = 2008;
 
   // Phasen nach Stunden seit der letzten Mahlzeit. Zeitfenster sind Richtwerte.
   const PHASES = [
@@ -308,9 +310,9 @@
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return Object.assign({ active: null, history: [] }, JSON.parse(raw));
+      if (raw) return Object.assign({ active: null, history: [], totalMs: START_TOTAL_HOURS * HOUR }, JSON.parse(raw));
     } catch (e) {}
-    return { active: null, history: [] };
+    return { active: null, history: [], totalMs: START_TOTAL_HOURS * HOUR };
   }
 
   function save() {
@@ -350,7 +352,7 @@
   function setDefaults() {
     const now = Date.now();
     startInput.value = toLocalInput(now);
-    endInput.value = toLocalInput(now + 16 * HOUR);
+    endInput.value = toLocalInput(now + 24 * HOUR);
   }
 
   document.querySelectorAll(".chip[data-hours]").forEach((btn) => {
@@ -380,6 +382,7 @@
     const { start, end } = state.active;
     if (now > start) {
       state.history.unshift({ start, stop: now, target: end - start });
+      state.totalMs += now - start;
       state.history = state.history.slice(0, 20);
     }
     state.active = null;
@@ -408,6 +411,13 @@
       s.title = p.name;
       tl.appendChild(s);
     });
+  }
+
+  // Gesamtstunden inklusive des laufenden Fastens
+  function renderTotal(now) {
+    const running = state.active && now > state.active.start ? now - state.active.start : 0;
+    const hours = Math.floor((state.totalMs + running) / HOUR);
+    $("totalHours").textContent = hours.toLocaleString("de-DE") + " Std.";
   }
 
   function renderHistory() {
@@ -449,6 +459,7 @@
     const now = Date.now();
     // Alle 60 Sekunden ein neuer Spruch
     if (now - lastQuoteSwitch > 60 * 1000) nextQuote();
+    renderTotal(now);
     if (!active) { $("goal").classList.add("hidden"); return; }
     checkNotifications(now);
     const { start, end } = active;

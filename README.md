@@ -6,9 +6,10 @@ Ein einfacher Fastentracker als einzelne HTML-Datei, ohne Installation.
 
 `index.html` im Browser öffnen.
 
-* Start (letzte Mahlzeit) und Ende (Ziel) eingeben oder eine Schnellauswahl wählen (12, 14, 16:8, 18:6, 24, 40, 72 Std.)
+* Start (letzte Mahlzeit) und Ende (Ziel) eingeben oder eine Schnellauswahl wählen (24, 40 oder 72 Std.)
 * **Starten** beginnt das Fasten, **Beenden** stoppt es und speichert es im Verlauf
 * Die App zeigt laufend die gefastete Zeit, die Restzeit, den Fortschritt und die aktuelle Stoffwechselphase
+* Zählt die Fastenstunden insgesamt (Startwert 2008 Std., das laufende Fasten wird live mitgezählt)
 * Jede Minute erscheint ein neuer Motivationsspruch, per Button auch sofort
 
 * Optional Benachrichtigungen bei jedem Phasenwechsel und beim Erreichen des Ziels
