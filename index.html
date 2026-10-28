@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fastentracker</title>
+<meta name="theme-color" content="#2f7d5b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Fasten">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
   :root {
     --bg: #f6f4ef;
@@ -123,6 +130,9 @@
   .muted { color: var(--muted); }
   .note { color: var(--muted); font-size: .8rem; }
   .hidden { display: none; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { color: var(--muted); font-size: .85rem; margin: 10px 0 0; }
 </style>
 </head>
 <body>
@@ -192,6 +202,16 @@
     <p class="goal hidden" id="goal">Ziel erreicht! Du hast es geschafft.</p>
     <p class="quote" id="quote"></p>
     <button class="chip" id="quoteBtn">Neuer Spruch</button>
+  </section>
+
+  <section class="card" id="appCard">
+    <h2>App und Benachrichtigungen</h2>
+    <div class="actions">
+      <button class="chip" id="notifyBtn">Benachrichtigungen aktivieren</button>
+      <button class="chip hidden" id="installBtn">App installieren</button>
+    </div>
+    <p class="hint" id="notifyHint"></p>
+    <p class="hint" id="installHint"></p>
   </section>
 
   <section class="card" id="historyCard">
@@ -347,7 +367,7 @@
     if (isNaN(end)) { $("error").textContent = "Bitte eine Endzeit eingeben."; return; }
     if (end <= start) { $("error").textContent = "Die Endzeit muss nach der Startzeit liegen."; return; }
     $("error").textContent = "";
-    state.active = { start, end };
+    state.active = { start, end, notifiedPhase: phaseIndexAt(Date.now(), start), goalNotified: Date.now() >= end };
     save();
     render();
   });
@@ -428,6 +448,7 @@
     // Alle 60 Sekunden ein neuer Spruch
     if (now - lastQuoteSwitch > 60 * 1000) nextQuote();
     if (!active) { $("goal").classList.add("hidden"); return; }
+    checkNotifications(now);
     const { start, end } = active;
     const total = end - start;
     const elapsed = now - start;
@@ -466,6 +487,112 @@
     renderTimeline(elapsed < 0 ? -1 : idx);
   }
 
+  function phaseIndexAt(now, start) {
+    if (now < start) return -1;
+    const hours = (now - start) / HOUR;
+    return PHASES.findIndex((p) => hours >= p.from && hours < p.to);
+  }
+
+  // Benachrichtigungen bei Phasenwechsel und Ziel
+  function notify(title, body) {
+    if (!state.notify || !("Notification" in window) || Notification.permission !== "granted") return;
+    const opts = { body, icon: "icons/icon-192.png", badge: "icons/icon-192.png", tag: "fastentracker" };
+    if (swReg) swReg.showNotification(title, opts).catch(() => {});
+    else { try { new Notification(title, opts); } catch (e) {} }
+  }
+
+  function checkNotifications(now) {
+    const a = state.active;
+    if (!a) return;
+    const idx = phaseIndexAt(now, a.start);
+    let changed = false;
+    if (a.notifiedPhase === undefined) { a.notifiedPhase = idx; changed = true; }
+    if (idx > a.notifiedPhase) {
+      a.notifiedPhase = idx;
+      changed = true;
+      if (idx === 0) notify("Dein Fasten hat begonnen", "Viel Erfolg! " + QUOTES[quoteIndex]);
+      else notify("Neue Phase: " + PHASES[idx].name, PHASES[idx].text.split(". ")[0] + ".");
+    }
+    if (!a.goalNotified && now >= a.end) {
+      a.goalNotified = true;
+      changed = true;
+      notify("Ziel erreicht!", "Du hast " + fmtHours(a.end - a.start) + " gefastet. Stark!");
+    }
+    if (changed) save();
+  }
+
+  function renderNotifyUi() {
+    const btn = $("notifyBtn");
+    const hint = $("notifyHint");
+    if (!("Notification" in window)) {
+      btn.disabled = true;
+      hint.textContent = isIos()
+        ? "Auf dem iPhone funktionieren Benachrichtigungen erst, wenn die App zum Home-Bildschirm hinzugefügt wurde (ab iOS 16.4)."
+        : "Dieser Browser unterstützt keine Benachrichtigungen.";
+      return;
+    }
+    if (Notification.permission === "denied") {
+      btn.disabled = true;
+      btn.textContent = "Benachrichtigungen blockiert";
+      hint.textContent = "Du kannst sie in den Browser-Einstellungen für diese Seite wieder erlauben.";
+      return;
+    }
+    const on = state.notify && Notification.permission === "granted";
+    btn.disabled = false;
+    btn.textContent = on ? "Benachrichtigungen ausschalten" : "Benachrichtigungen aktivieren";
+    hint.textContent = on
+      ? "Du bekommst eine Nachricht bei jedem Phasenwechsel und wenn du dein Ziel erreichst. Das klappt nur, solange die App geöffnet ist oder im Hintergrund läuft. Ist sie ganz geschlossen, kommt die Nachricht beim nächsten Öffnen."
+      : "";
+  }
+
+  $("notifyBtn").addEventListener("click", async () => {
+    if (state.notify && Notification.permission === "granted") {
+      state.notify = false;
+    } else {
+      const perm = await Notification.requestPermission();
+      state.notify = perm === "granted";
+      if (state.notify) notify("Benachrichtigungen sind an", "Du wirst bei jedem Phasenwechsel informiert.");
+    }
+    save();
+    renderNotifyUi();
+  });
+
+  // Installation als App
+  function isIos() { return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+  function isStandalone() {
+    return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  }
+  let installPrompt = null;
+  let swReg = null;
+
+  function renderInstallUi() {
+    const hint = $("installHint");
+    if (isStandalone()) { $("installBtn").classList.add("hidden"); hint.textContent = "Die App ist installiert."; return; }
+    $("installBtn").classList.toggle("hidden", !installPrompt);
+    if (installPrompt) hint.textContent = "";
+    else if (isIos()) hint.textContent = "Installieren auf dem iPhone: in Safari auf Teilen tippen und dann „Zum Home-Bildschirm“ wählen.";
+    else if (location.protocol === "file:") hint.textContent = "Zum Installieren muss die App über eine Webadresse (https) geöffnet werden, nicht als lokale Datei.";
+    else hint.textContent = "Installieren: im Browsermenü „App installieren“ oder „Zum Startbildschirm hinzufügen“ wählen.";
+  }
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    renderInstallUi();
+  });
+  window.addEventListener("appinstalled", () => { installPrompt = null; renderInstallUi(); });
+  $("installBtn").addEventListener("click", async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice;
+    installPrompt = null;
+    renderInstallUi();
+  });
+
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("sw.js").then((reg) => { swReg = reg; }).catch(() => {});
+  }
+
   function setRing(fraction) {
     ringFg.style.strokeDashoffset = RING_LEN * (1 - fraction);
     $("ringText").textContent = Math.floor(fraction * 100) + " %";
@@ -474,7 +601,11 @@
   if (!state.active) setDefaults();
   $("quote").textContent = QUOTES[quoteIndex];
   render();
+  renderNotifyUi();
+  renderInstallUi();
   setInterval(tick, 1000);
+  // Beim Zurückkehren in die App sofort aktualisieren
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) tick(); });
 })();
 </script>
 </body>

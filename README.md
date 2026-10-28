@@ -11,7 +11,25 @@ Ein einfacher Fastentracker als einzelne HTML-Datei, ohne Installation.
 * Die App zeigt laufend die gefastete Zeit, die Restzeit, den Fortschritt und die aktuelle Stoffwechselphase
 * Jede Minute erscheint ein neuer Motivationsspruch, per Button auch sofort
 
+* Optional Benachrichtigungen bei jedem Phasenwechsel und beim Erreichen des Ziels
+* Als App installierbar (PWA) und offline nutzbar
+
 Die Daten werden nur lokal im Browser gespeichert (localStorage).
+
+## Als App installieren
+
+Installation und Offline-Betrieb funktionieren nur, wenn die App über eine https-Adresse
+geöffnet wird (zum Beispiel GitHub Pages), nicht als lokale Datei.
+
+* **Android / Chrome:** Button „App installieren“ oder im Menü „App installieren“
+* **iPhone / Safari:** Teilen, dann „Zum Home-Bildschirm“
+
+## Benachrichtigungen
+
+Ohne Server kann eine Web-App keine Nachrichten senden, während sie komplett geschlossen ist.
+Die Benachrichtigungen kommen deshalb, solange die App geöffnet ist oder im Hintergrund läuft.
+Auf dem iPhone sind Benachrichtigungen nur in der zum Home-Bildschirm hinzugefügten App
+möglich (ab iOS 16.4).
 
 ## Hinweis
 
